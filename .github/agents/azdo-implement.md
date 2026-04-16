@@ -579,7 +579,30 @@ curl -s \
   -d "[{ \"workItem\": { \"id\": <TC_ID> } }]"
 ```
 
-Repeat these two `curl` commands for every remaining test case before moving to
+**curl 3 — link the Test Case back to the original work item** so the User
+Story / Bug shows "Tested By" this test case in AzDO (replace `<TC_ID>` with
+the id from curl 1, and `<ID>` is the original work item ID from Step 1):
+
+```bash
+curl -s \
+  -X PATCH \
+  -u ":<YOUR_PAT>" \
+  -H "Content-Type: application/json-patch+json" \
+  "https://dev.azure.com/YOUR_ORG/YOUR_PROJECT/_apis/wit/workitems/<ID>?api-version=7.1" \
+  -d '[
+    {
+      "op": "add",
+      "path": "/relations/-",
+      "value": {
+        "rel": "Microsoft.VSTS.Common.TestedBy-Forward",
+        "url": "https://dev.azure.com/YOUR_ORG/YOUR_PROJECT/_apis/wit/workitems/<TC_ID>",
+        "attributes": { "comment": "Functional test case" }
+      }
+    }
+  ]'
+```
+
+Repeat all three `curl` commands for every remaining test case before moving to
 Step 18.
 
 ---
@@ -634,3 +657,4 @@ Changes:
 | Create child test suite     | POST   | `/_apis/testplan/Plans/<planId>/suites?api-version=7.1` (body: `parentSuite`)  |
 | Create test case WI         | POST   | `/_apis/wit/workitems/$Test%20Case?api-version=7.1`                            |
 | Add test case to suite      | POST   | `/_apis/testplan/Plans/<planId>/Suites/<suiteId>/TestCase?api-version=7.1`     |
+| Link test case to work item | PATCH  | `/_apis/wit/workitems/<id>?api-version=7.1` (rel: `TestedBy-Forward`)          |
