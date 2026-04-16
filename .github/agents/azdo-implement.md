@@ -47,6 +47,15 @@ Implement work item 42
 
 ---
 
+## Ground rule — always use the ask tool for user input
+
+> **At every point where you need information or a decision from the user, you
+> MUST use the `ask` tool with a structured `options` list. Never ask questions
+> as plain prose in your response. The `ask` tool renders a selectable or
+> multi-select UI in VS Code; plain text does not.**
+
+---
+
 ## Workflow
 
 ### Step 1 — Extract the work item ID
@@ -81,6 +90,21 @@ curl -s \
 > `":$AZDO_PAT"` throughout this file.
 
 Store the returned JSON fields for use in subsequent steps.
+
+If any required field (title, description, acceptance criteria / repro steps) is
+empty or unclear, use the **ask** tool to request clarification before
+continuing:
+
+```
+ask(
+  question = "Work item <ID> is missing some details needed to proceed. What
+should I use for the following?",
+  options = [
+    "Proceed anyway — infer intent from the available fields",
+    "I will paste the missing details in my next message"
+  ]
+)
+```
 
 ---
 
@@ -125,37 +149,24 @@ item. Consider:
 
 List the top candidate files with a one-line rationale for each.
 
----
-
-### Step 6 — Clarify before implementing
-
-Use the **ask** tool to present the following options to the user before writing
-any code:
+If the search returns no useful results and you cannot determine which files to
+change, use the **ask** tool:
 
 ```
 ask(
-  question = "I have analysed work item <ID>: \"<title>\".
-Here is my implementation plan:
-
-<bulleted summary of changes you intend to make>
-
-How would you like to proceed?",
+  question = "I could not locate files clearly related to work item <ID>. How
+should I proceed?",
   options = [
-    "Proceed with the plan as described",
-    "Modify the plan (I will explain in the next message)",
+    "I will tell you the relevant file paths in my next message",
+    "Search for <specific keyword> instead",
     "Cancel — do not implement"
   ]
 )
 ```
 
-- If the user selects **"Modify the plan"**, read their follow-up message and
-  revise your plan, then present it again with the same three options.
-- If the user selects **"Cancel"**, stop and confirm cancellation.
-- If the user selects **"Proceed"**, continue to Step 7.
-
 ---
 
-### Step 7 — Create the feature / fix branch
+### Step 6 — Create the feature / fix branch
 
 ```bash
 git checkout -b <branch-name>
@@ -165,7 +176,7 @@ Where `<branch-name>` follows the convention derived in Step 3.
 
 ---
 
-### Step 8 — Implement the changes
+### Step 7 — Implement the changes
 
 Apply all required code changes using `create_file` and `edit_file`.
 
@@ -176,11 +187,25 @@ Guidelines:
 - Keep changes focused: only modify what is necessary to satisfy the work item.
 - Add inline comments only where the logic is non-obvious.
 
+If you reach a decision point where two valid approaches exist and the choice
+has user-visible consequences, use the **ask** tool:
+
+```
+ask(
+  question = "I need a decision before implementing <area>. Which approach
+should I use?",
+  options = [
+    "<Option A — one-line description>",
+    "<Option B — one-line description>"
+  ]
+)
+```
+
 ---
 
-### Step 9 — Generate unit tests
+### Step 8 — Generate unit tests
 
-For every file changed in Step 8, create or update its corresponding test file.
+For every file changed in Step 7, create or update its corresponding test file.
 
 Test requirements:
 - Cover the happy path and at least one negative / edge-case scenario.
@@ -188,9 +213,26 @@ Test requirements:
   existing test files or `package.json` / `*.csproj` / `requirements.txt` etc.).
 - Do **not** introduce a new test framework dependency unless there is none.
 
+If no test framework is detected, use the **ask** tool:
+
+```
+ask(
+  question = "I could not detect a test framework in this repository. Which
+should I use?",
+  options = [
+    "Jest",
+    "Vitest",
+    "pytest",
+    "xUnit (.NET)",
+    "NUnit (.NET)",
+    "Other — I will specify in my next message"
+  ]
+)
+```
+
 ---
 
-### Step 10 — Run the tests
+### Step 9 — Run the tests
 
 ```bash
 # Detect and run the project's test command, e.g.:
@@ -200,9 +242,23 @@ Test requirements:
 
 If any test fails, fix the code (not the test) and re-run until all tests pass.
 
+If a test failure cannot be resolved automatically, use the **ask** tool:
+
+```
+ask(
+  question = "Test <test-name> is failing and I cannot resolve it automatically.
+How should I proceed?",
+  options = [
+    "Show me the failure — I will guide you",
+    "Skip this test for now and continue",
+    "Cancel — do not commit"
+  ]
+)
+```
+
 ---
 
-### Step 11 — Commit and push
+### Step 10 — Commit and push
 
 ```bash
 git add -A
@@ -224,7 +280,7 @@ Where `<type>` is `feat` for User Stories / Tasks and `fix` for Bugs.
 
 ---
 
-### Step 12 — Open a draft pull request
+### Step 11 — Open a draft pull request
 
 ```bash
 curl -s \
@@ -251,13 +307,13 @@ curl -s \
 
 > **IMPORTANT — do NOT stop after this step.**
 > Opening the PR is not the end of the workflow. You MUST immediately continue
-> to Step 13, regardless of whether the PR creation succeeded or failed. Do not
+> to Step 12, regardless of whether the PR creation succeeded or failed. Do not
 > produce a completion summary here. Do not ask the user if they want to
-> continue. Simply proceed to Step 13 now.
+> continue. Simply proceed to Step 12 now.
 
 ---
 
-### Step 13 — Generate functional / acceptance test cases (REQUIRED)
+### Step 12 — Generate functional / acceptance test cases (REQUIRED)
 
 > **This step is mandatory and must always be executed.**
 > You must call the `ask` tool right now — before producing any other output —
@@ -285,7 +341,7 @@ Generate a Gherkin-style test case table covering:
 - At least one positive and one negative scenario per criterion.
 
 Present the table in Markdown.  
-Then proceed to **Step 14** (offer to upload).
+Then proceed to **Step 13** (offer to upload).
 
 #### Option B: "Yes — generate and download as CSV"
 
@@ -306,7 +362,7 @@ CSVEOF
 ```
 
 Inform the user the file has been saved and can be reviewed before uploading.  
-Then proceed to **Step 14** (offer to upload).
+Then proceed to **Step 13** (offer to upload).
 
 #### Option C: "No — skip this step"
 
@@ -324,7 +380,7 @@ Stop here.
 
 ---
 
-### Step 14 — Offer to upload test cases to Azure DevOps Test Plans
+### Step 13 — Offer to upload test cases to Azure DevOps Test Plans
 
 Use the **ask** tool:
 
@@ -343,7 +399,7 @@ If **"No"**, confirm and stop.
 
 ---
 
-### Step 15 — Select a Test Plan
+### Step 14 — Select a Test Plan
 
 Fetch all available test plans:
 
@@ -368,7 +424,7 @@ Store the chosen plan's `id` as `<PLAN_ID>`.
 
 ---
 
-### Step 15b — Browse the suite hierarchy and select a parent suite
+### Step 15 — Browse the suite hierarchy and select a parent suite
 
 Fetch every suite inside the selected plan and build a tree so the user can see
 the full folder structure (e.g. Iteration → Regression / Story Acceptance →
