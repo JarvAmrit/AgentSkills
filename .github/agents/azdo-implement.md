@@ -282,6 +282,24 @@ Where `<type>` is `feat` for User Stories / Tasks and `fix` for Bugs.
 
 ### Step 11 — Open a draft pull request
 
+First, fetch the repository list to obtain both `<REPO_ID>` and the repo's
+`defaultBranch` in a single call:
+
+```bash
+curl -s -u ":<YOUR_PAT>" \
+  "https://dev.azure.com/YOUR_ORG/YOUR_PROJECT/_apis/git/repositories?api-version=7.1" \
+  | jq '.value[] | {id, name, defaultBranch}'
+```
+
+Match the repo by name, then store:
+- the `id` field as `<REPO_ID>`
+- the `defaultBranch` field as `<DEFAULT_BRANCH>` (e.g. `refs/heads/develop`)
+
+> **Never assume the default branch is `main`.** Always use the `defaultBranch`
+> value returned by the API above as the PR target.
+
+Then open the draft PR:
+
 ```bash
 curl -s \
   -X POST \
@@ -292,18 +310,11 @@ curl -s \
     "title": "<type>: <title> [#<ID>]",
     "description": "## Summary\n\n- Implements work item [#<ID>](https://dev.azure.com/YOUR_ORG/YOUR_PROJECT/_workitems/edit/<ID>)\n\n## Changes\n\n<bulleted change list>\n\n## Test plan\n\n- Unit tests added / updated (see changed test files)\n- All existing tests passing",
     "sourceRefName": "refs/heads/<branch-name>",
-    "targetRefName": "refs/heads/main",
+    "targetRefName": "<DEFAULT_BRANCH>",
     "isDraft": true,
     "workItemRefs": [{ "id": "<ID>" }]
   }'
 ```
-
-> To find `<REPO_ID>` run:
-> ```bash
-> curl -s -u ":<YOUR_PAT>" \
->   "https://dev.azure.com/YOUR_ORG/YOUR_PROJECT/_apis/git/repositories?api-version=7.1" \
->   | jq '.value[] | {id, name}'
-> ```
 
 > **IMPORTANT — do NOT stop after this step.**
 > Opening the PR is not the end of the workflow. You MUST immediately continue
