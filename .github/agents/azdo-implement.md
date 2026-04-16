@@ -6,7 +6,7 @@ description: >
   PR, and optionally uploads functional test cases to the Azure DevOps Test Plan —
   all without creating or running any external script files.
 tools:
-  - ask
+  - vscode/askQuestions
   - create_file
   - edit_file
   - read_file
@@ -26,8 +26,8 @@ tools:
 | `YOUR_PROJECT`           | Your Azure DevOps project name                |
 | `YOUR_PAT`               | Your Azure DevOps Personal Access Token (PAT) |
 
-> **Tip:** Store the PAT as an environment variable (`AZDO_PAT`) so you never
-> have to paste it in chat. Every `curl` command below reads from that variable.
+> **Tip:** Store the PAT as an environment variable (`AZDO_PAT`) and substitute
+> `":$AZDO_PAT"` for `":<YOUR_PAT>"` throughout this file.
 
 ---
 
@@ -49,20 +49,17 @@ Implement work item 42
 
 ## Ground rules
 
-> **Rule 1 — always use the ask tool for user input.**
-> At every point where you need information or a decision from the user, you
-> MUST use the `ask` tool with a structured `options` list. Never present
-> options as a numbered list in plain prose. The `ask` tool renders a
-> selectable UI in VS Code; plain text does not.
+> **Rule 1 — always use `#tool:vscode/askQuestions` for every user decision.**
+> Every choice presented to the user must be delivered through
+> `#tool:vscode/askQuestions` with a structured JSON question object. Never
+> present choices as plain prose, numbered lists, or bullet points. The tool
+> renders a selectable UI (radio buttons for `select`, checkboxes for
+> `multiselect`, a text field for `text`) in VS Code; plain text does not.
 
-> **Rule 2 — never generate Python scripts, shell script files, or any other
-> code files to drive this workflow.**
-> All API interactions must be performed with individual `curl` commands
-> executed directly in the terminal. If multiple items must be processed (e.g.
-> creating several test cases), run one pair of `curl` commands per item,
-> sequentially, one at a time. Do not write a loop into a file, do not create
-> a `.py`, `.sh`, or any other script file, and do not use any language runtime
-> to orchestrate the calls.
+> **Rule 2 — no Python scripts, shell script files, or any other code files.**
+> All API interactions must be individual `curl` commands run directly in the
+> terminal. If multiple items must be processed, run one set of `curl` commands
+> per item, sequentially, one at a time.
 
 ---
 
@@ -76,8 +73,6 @@ If only a URL was provided, extract the numeric ID at the end of the path.
 ---
 
 ### Step 2 — Fetch work item details from Azure DevOps
-
-Run the following `curl` command (replace `<ID>` with the parsed ID):
 
 ```bash
 curl -s \
@@ -96,24 +91,25 @@ curl -s \
     }'
 ```
 
-> If `$AZDO_PAT` is set in the environment you may substitute `":<YOUR_PAT>"` with
-> `":$AZDO_PAT"` throughout this file.
-
 Store the returned JSON fields for use in subsequent steps.
 
 If any required field (title, description, acceptance criteria / repro steps) is
-empty or unclear, use the **ask** tool to request clarification before
-continuing:
+empty or unclear, invoke `#tool:vscode/askQuestions` right now — before any
+other output:
 
-```
-ask(
-  question = "Work item <ID> is missing some details needed to proceed. What
-should I use for the following?",
-  options = [
-    "Proceed anyway — infer intent from the available fields",
-    "I will paste the missing details in my next message"
+```json
+{
+  "questions": [
+    {
+      "type": "select",
+      "title": "Work item <ID> is missing some details needed to proceed. How should I continue?",
+      "options": [
+        "Proceed anyway — infer intent from the available fields",
+        "I will paste the missing details in my next message"
+      ]
+    }
   ]
-)
+}
 ```
 
 ---
@@ -126,7 +122,7 @@ should I use for the following?",
 | User Story     | `feature/`    |
 | Task           | `feature/`    |
 
-Derive the branch name using the pattern:
+Derive the branch name:
 
 ```
 <prefix><ID>-<kebab-case-title>
@@ -138,40 +134,36 @@ Example: `feature/42-user-login-validation`
 
 ### Step 4 — Analyse the work item
 
-Read the fetched fields and extract:
-
 - **For Bugs:** Repro steps, expected vs actual behaviour, affected area.
-- **For User Stories:** Acceptance criteria, functional requirements, affected modules.
+- **For User Stories:** Acceptance criteria, functional requirements, affected
+  modules.
 
-Summarise your understanding of what needs to be implemented or fixed before
-touching any code.
+Summarise your understanding before touching any code.
 
 ---
 
 ### Step 5 — Search the codebase for relevant files
 
 Use `grep_search` and `semantic_search` to locate files related to the work
-item. Consider:
+item. List the top candidate files with a one-line rationale for each.
 
-- Class or function names mentioned in the description.
-- File paths or module names referenced in repro steps / acceptance criteria.
-- Related test files.
+If the search returns no useful results, invoke `#tool:vscode/askQuestions`
+right now — before any other output:
 
-List the top candidate files with a one-line rationale for each.
-
-If the search returns no useful results and you cannot determine which files to
-change, use the **ask** tool:
-
-```
-ask(
-  question = "I could not locate files clearly related to work item <ID>. How
-should I proceed?",
-  options = [
-    "I will tell you the relevant file paths in my next message",
-    "Search for <specific keyword> instead",
-    "Cancel — do not implement"
+```json
+{
+  "questions": [
+    {
+      "type": "select",
+      "title": "I could not locate files clearly related to work item <ID>. How should I proceed?",
+      "options": [
+        "I will tell you the relevant file paths in my next message",
+        "Search for a different keyword — I will specify it in my next message",
+        "Cancel — do not implement"
+      ]
+    }
   ]
-)
+}
 ```
 
 ---
@@ -182,8 +174,6 @@ should I proceed?",
 git checkout -b <branch-name>
 ```
 
-Where `<branch-name>` follows the convention derived in Step 3.
-
 ---
 
 ### Step 7 — Implement the changes
@@ -191,24 +181,26 @@ Where `<branch-name>` follows the convention derived in Step 3.
 Apply all required code changes using `create_file` and `edit_file`.
 
 Guidelines:
-- Follow the existing code style, naming conventions, and folder structure of
-  the repository.
-- Do not create helper scripts or Python files to drive the implementation.
+- Follow the existing code style, naming conventions, and folder structure.
 - Keep changes focused: only modify what is necessary to satisfy the work item.
 - Add inline comments only where the logic is non-obvious.
 
-If you reach a decision point where two valid approaches exist and the choice
-has user-visible consequences, use the **ask** tool:
+If you reach a decision point where two valid implementation approaches exist,
+invoke `#tool:vscode/askQuestions` right now — before any other output:
 
-```
-ask(
-  question = "I need a decision before implementing <area>. Which approach
-should I use?",
-  options = [
-    "<Option A — one-line description>",
-    "<Option B — one-line description>"
+```json
+{
+  "questions": [
+    {
+      "type": "select",
+      "title": "I need a decision before implementing <area>. Which approach should I use?",
+      "options": [
+        "<Option A — one-line description>",
+        "<Option B — one-line description>"
+      ]
+    }
   ]
-)
+}
 ```
 
 ---
@@ -217,27 +209,30 @@ should I use?",
 
 For every file changed in Step 7, create or update its corresponding test file.
 
-Test requirements:
 - Cover the happy path and at least one negative / edge-case scenario.
-- Use whatever test framework is already present in the repository (detect from
-  existing test files or `package.json` / `*.csproj` / `requirements.txt` etc.).
+- Use the test framework already present in the repository.
 - Do **not** introduce a new test framework dependency unless there is none.
 
-If no test framework is detected, use the **ask** tool:
+If no test framework is detected, invoke `#tool:vscode/askQuestions` right now
+— before any other output:
 
-```
-ask(
-  question = "I could not detect a test framework in this repository. Which
-should I use?",
-  options = [
-    "Jest",
-    "Vitest",
-    "pytest",
-    "xUnit (.NET)",
-    "NUnit (.NET)",
-    "Other — I will specify in my next message"
+```json
+{
+  "questions": [
+    {
+      "type": "select",
+      "title": "I could not detect a test framework in this repository. Which should I use?",
+      "options": [
+        "Jest",
+        "Vitest",
+        "pytest",
+        "xUnit (.NET)",
+        "NUnit (.NET)",
+        "Other — I will specify in my next message"
+      ]
+    }
   ]
-)
+}
 ```
 
 ---
@@ -250,20 +245,25 @@ should I use?",
 <detected-test-command>
 ```
 
-If any test fails, fix the code (not the test) and re-run until all tests pass.
+Fix code (not tests) until all tests pass.
 
-If a test failure cannot be resolved automatically, use the **ask** tool:
+If a failure cannot be resolved automatically, invoke `#tool:vscode/askQuestions`
+right now — before any other output:
 
-```
-ask(
-  question = "Test <test-name> is failing and I cannot resolve it automatically.
-How should I proceed?",
-  options = [
-    "Show me the failure — I will guide you",
-    "Skip this test for now and continue",
-    "Cancel — do not commit"
+```json
+{
+  "questions": [
+    {
+      "type": "select",
+      "title": "Test '<test-name>' is failing and I cannot resolve it automatically. How should I proceed?",
+      "options": [
+        "Show me the failure — I will guide you",
+        "Skip this test for now and continue",
+        "Cancel — do not commit"
+      ]
+    }
   ]
-)
+}
 ```
 
 ---
@@ -286,8 +286,6 @@ EOF
 git push -u origin <branch-name>
 ```
 
-Where `<type>` is `feat` for User Stories / Tasks and `fix` for Bugs.
-
 ---
 
 ### Step 11 — Open a draft pull request
@@ -301,14 +299,11 @@ curl -s -u ":<YOUR_PAT>" \
   | jq '.value[] | {id, name, defaultBranch}'
 ```
 
-Match the repo by name, then store:
-- the `id` field as `<REPO_ID>`
-- the `defaultBranch` field as `<DEFAULT_BRANCH>` (e.g. `refs/heads/develop`)
+Match the repo by name, store the `id` as `<REPO_ID>` and the `defaultBranch`
+as `<DEFAULT_BRANCH>` (e.g. `refs/heads/develop`).
 
 > **Never assume the default branch is `main`.** Always use the `defaultBranch`
-> value returned by the API above as the PR target.
-
-Then open the draft PR:
+> value returned by the API.
 
 ```bash
 curl -s \
@@ -327,52 +322,38 @@ curl -s \
 ```
 
 > **IMPORTANT — do NOT stop after this step.**
-> Opening the PR is not the end of the workflow. You MUST immediately continue
-> to Step 12, regardless of whether the PR creation succeeded or failed. Do not
-> produce a completion summary here. Do not ask the user if they want to
-> continue. Simply proceed to Step 12 now.
+> Proceed immediately to Step 12. Do not produce a summary or wait for input.
 
 ---
 
 ### Step 12 — Generate functional / acceptance test cases (REQUIRED)
 
-> **This step is mandatory and must always be executed.**
-> You must call the `ask` tool right now — before producing any other output —
-> with the exact question below. Do not skip this step, do not summarise the
-> workflow, and do not wait for further instructions.
+> **You must invoke `#tool:vscode/askQuestions` right now — before producing
+> any other output. Do not skip this step.**
 
-Use the **ask** tool:
-
-```
-ask(
-  question = "The draft PR is open. Would you like to generate functional /
-acceptance test cases for this work item?",
-  options = [
-    "Yes — generate and show them here",
-    "Yes — generate and download as CSV",
-    "No — skip this step"
+```json
+{
+  "questions": [
+    {
+      "type": "select",
+      "title": "The draft PR is open. Would you like to generate functional / acceptance test cases for this work item?",
+      "options": [
+        "Yes — generate and show them here",
+        "Yes — generate and download as CSV",
+        "No — skip this step"
+      ]
+    }
   ]
-)
+}
 ```
 
-#### Option A: "Yes — generate and show them here"
+#### Option A — "Yes — generate and show them here"
 
-Generate a Gherkin-style test case table covering:
-- Each acceptance criterion (User Story) or each repro / fix scenario (Bug).
-- At least one positive and one negative scenario per criterion.
+Generate a Gherkin-style test case table covering every acceptance criterion
+(User Story) or repro / fix scenario (Bug). At least one positive and one
+negative scenario per criterion. Present in Markdown, then proceed to Step 13.
 
-Present the table in Markdown.  
-Then proceed to **Step 13** (offer to upload).
-
-#### Option B: "Yes — generate and download as CSV"
-
-Generate the same test cases and format them as CSV with this header row:
-
-```
-Test Case ID,Title,Preconditions,Test Steps,Expected Result,Test Type
-```
-
-Save the file:
+#### Option B — "Yes — generate and download as CSV"
 
 ```bash
 cat > functional-test-cases-<ID>.csv <<'CSVEOF'
@@ -382,12 +363,9 @@ TC-001,"<title>","<preconditions>","<steps>","<expected>","Functional"
 CSVEOF
 ```
 
-Inform the user the file has been saved and can be reviewed before uploading.  
-Then proceed to **Step 13** (offer to upload).
+Inform the user the file is saved, then proceed to Step 13.
 
-#### Option C: "No — skip this step"
-
-Confirm the workflow is complete. Provide a summary:
+#### Option C — "No — skip this step"
 
 ```
 ✓ Work item <ID> — "<title>"
@@ -403,19 +381,21 @@ Stop here.
 
 ### Step 13 — Offer to upload test cases to Azure DevOps Test Plans
 
-> **This step requires user input. You must call the `ask` tool right now —
-> before producing any other output. Do not list options as plain text or a
-> numbered list. The ask tool renders a selectable UI in VS Code.**
+> **Invoke `#tool:vscode/askQuestions` right now — before any other output.**
 
-```
-ask(
-  question = "Would you like to upload these functional test cases to an Azure
-DevOps Test Plan?",
-  options = [
-    "Yes — let me choose a Test Plan",
-    "No — I will upload manually"
+```json
+{
+  "questions": [
+    {
+      "type": "select",
+      "title": "Would you like to upload these functional test cases to an Azure DevOps Test Plan?",
+      "options": [
+        "Yes — let me choose a Test Plan",
+        "No — I will upload manually"
+      ]
+    }
   ]
-)
+}
 ```
 
 If **"No"**, confirm and stop.
@@ -423,8 +403,6 @@ If **"No"**, confirm and stop.
 ---
 
 ### Step 14 — Select a Test Plan
-
-Run this `curl` command to list all available test plans:
 
 ```bash
 curl -s \
@@ -434,16 +412,19 @@ curl -s \
   | jq '.value[] | {id, name}'
 ```
 
-> **This step requires user input. You must call the `ask` tool right now —
-> before producing any other output. Populate the options list with the actual
-> plan names returned above. Do not list them as plain text or a numbered list.
-> The ask tool renders a selectable UI in VS Code.**
+> **Invoke `#tool:vscode/askQuestions` right now — before any other output.**
+> Populate `options` with the actual plan names returned above.
 
-```
-ask(
-  question = "Select the Test Plan to add the test suite to:",
-  options = [ "<each plan name from the API response above>" ]
-)
+```json
+{
+  "questions": [
+    {
+      "type": "select",
+      "title": "Select the Test Plan to add the test suite to:",
+      "options": [ "<each plan name from the API response>" ]
+    }
+  ]
+}
 ```
 
 Store the chosen plan's `id` as `<PLAN_ID>`.
@@ -452,61 +433,35 @@ Store the chosen plan's `id` as `<PLAN_ID>`.
 
 ### Step 15 — Browse the suite hierarchy and select a parent suite
 
-Fetch every suite inside the selected plan and build a tree so the user can see
-the full folder structure (e.g. Iteration → Regression / Story Acceptance →
-individual story suites):
-
 ```bash
 curl -s \
   -u ":<YOUR_PAT>" \
   -H "Content-Type: application/json" \
   "https://dev.azure.com/YOUR_ORG/YOUR_PROJECT/_apis/testplan/Plans/<PLAN_ID>/suites?api-version=7.1" \
-  | jq '
-      [ .value[]
-        | { id,
-            name,
-            parentId: (.parentSuite.id // null),
-            suiteType
-          }
-      ]'
+  | jq '[ .value[] | { id, name, parentId: (.parentSuite.id // null), suiteType } ]'
 ```
 
-Using the `parentId` links, reconstruct and display the hierarchy as an
-indented tree, for example:
+Using `parentId` links, reconstruct and display the hierarchy as an indented
+tree in the chat. Then:
 
-```
-MetIQ_PI_26_2_MetIQ Functional Tests  (id: 6683211)
-└── Iteration 26.2.1  (id: 6684000)
-    ├── Regression  (id: 6684010)
-    └── Story Acceptance  (id: 6684020)
-        ├── 6534351 : Migrate all existing METIQ UI to API calls  (id: 6686507)
-        └── 6677552 : Onboard ID...  (id: 6686510)
-└── Iteration 26.2.2  (id: 6685000)
-    ├── Regression  (id: 6685010)
-    └── Story Acceptance  (id: 6685020)
-```
+> **Invoke `#tool:vscode/askQuestions` right now — before any other output.**
+> Populate `options` with only the container-level suite names (e.g.
+> "Story Acceptance", "Regression") — not individual story-level leaf suites.
 
-Display the reconstructed tree in the chat so the user can see the full
-structure. Then:
-
-> **This step requires user input. You must call the `ask` tool right now —
-> before producing any other output. Populate the options list with the actual
-> container suite names (and their iteration context) from the tree above.
-> Include only container-level suites such as "Regression" and
-> "Story Acceptance" — not individual story-level leaf suites. Do not list
-> options as plain text or a numbered list. The ask tool renders a selectable
-> UI in VS Code.**
-
-```
-ask(
-  question = "The Test Plan suite structure is shown above. Under which suite
-should the new test suite for work item <ID> be created?",
-  options = [
-    "<container suite name — e.g. 'Story Acceptance (Iteration 26.2.1)' (id: XXXXXX)>",
-    "<container suite name — e.g. 'Regression (Iteration 26.2.1)' (id: XXXXXX)>",
-    "<...one option per container suite found in the tree...>"
+```json
+{
+  "questions": [
+    {
+      "type": "select",
+      "title": "The Test Plan suite structure is shown above. Under which suite should the new test suite for work item <ID> be created?",
+      "options": [
+        "<container suite — e.g. 'Story Acceptance (Iteration 26.2.1)' (id: XXXXXX)>",
+        "<container suite — e.g. 'Regression (Iteration 26.2.1)' (id: XXXXXX)>",
+        "<...one option per container suite found in the tree...>"
+      ]
+    }
   ]
-)
+}
 ```
 
 Store the chosen suite's `id` as `<PARENT_SUITE_ID>`.
@@ -515,13 +470,8 @@ Store the chosen suite's `id` as `<PARENT_SUITE_ID>`.
 
 ### Step 16 — Create a Test Suite under the selected parent
 
-The suite name must follow the AzDO convention used across the plan:
-
-```
-<ID> : <Title>
-```
-
-For example: `6534351 : Migrate all existing METIQ UI to API calls from v2-beta to v2`
+Suite name convention: `<ID> : <Title>`
+(e.g. `6534351 : Migrate all existing METIQ UI to API calls from v2-beta to v2`)
 
 ```bash
 curl -s \
@@ -540,16 +490,12 @@ Store the returned `id` as `<SUITE_ID>`.
 
 ---
 
-### Step 17 — Create each test case as a work item and add to the suite
+### Step 17 — Create each test case and link to the work item
 
-> **Do not write a Python script, shell script file, or any other code file to
-> loop over the test cases. Execute the two `curl` commands below once for each
-> test case, one test case at a time, sequentially in the terminal.**
+> **Do not write a Python script, shell script file, or any other code file.**
+> Run the three `curl` commands below once per test case, sequentially.
 
-For each generated test case, execute these two `curl` commands in sequence.
-
-**curl 1 — create the Test Case work item** (substitute the actual values for
-this test case; note `custom.app_EAICode` is always `13882`):
+**curl 1 — create the Test Case work item:**
 
 ```bash
 curl -s \
@@ -558,17 +504,16 @@ curl -s \
   -H "Content-Type: application/json-patch+json" \
   "https://dev.azure.com/YOUR_ORG/YOUR_PROJECT/_apis/wit/workitems/\$Test%20Case?api-version=7.1" \
   -d '[
-    { "op": "add", "path": "/fields/System.Title",                "value": "<test case title>" },
-    { "op": "add", "path": "/fields/System.Description",          "value": "<preconditions>" },
-    { "op": "add", "path": "/fields/Microsoft.VSTS.TCM.Steps",    "value": "<test steps as HTML>" },
-    { "op": "add", "path": "/fields/custom.app_EAICode",          "value": "13882" }
+    { "op": "add", "path": "/fields/System.Title",                 "value": "<test case title>" },
+    { "op": "add", "path": "/fields/System.Description",           "value": "<preconditions>" },
+    { "op": "add", "path": "/fields/Microsoft.VSTS.TCM.Steps",     "value": "<test steps as HTML>" },
+    { "op": "add", "path": "/fields/custom.app_EAICode",           "value": "13882" }
   ]' | jq '.id'
 ```
 
-Note the numeric `id` returned (shown by `jq '.id'`) — this is `<TC_ID>`.
+Note the returned `id` as `<TC_ID>`.
 
-**curl 2 — add the Test Case to the suite** (replace `<TC_ID>` with the id
-from curl 1):
+**curl 2 — add the Test Case to the suite:**
 
 ```bash
 curl -s \
@@ -579,9 +524,7 @@ curl -s \
   -d "[{ \"workItem\": { \"id\": <TC_ID> } }]"
 ```
 
-**curl 3 — link the Test Case back to the original work item** so the User
-Story / Bug shows "Tested By" this test case in AzDO (replace `<TC_ID>` with
-the id from curl 1, and `<ID>` is the original work item ID from Step 1):
+**curl 3 — link the Test Case back to the original work item (Tested By):**
 
 ```bash
 curl -s \
@@ -602,14 +545,11 @@ curl -s \
   ]'
 ```
 
-Repeat all three `curl` commands for every remaining test case before moving to
-Step 18.
+Repeat all three `curl` commands for every remaining test case.
 
 ---
 
 ### Step 18 — Final summary
-
-Once all test cases have been uploaded, confirm completion:
 
 ```
 ✓ Work item <ID> — "<title>"
@@ -617,8 +557,9 @@ Once all test cases have been uploaded, confirm completion:
 ✓ Unit tests: added / updated
 ✓ Draft PR: opened
 ✓ Test Plan: <plan name>
-✓ Test Suite: "<suite name>" (ID: <SUITE_ID>)
+✓ Test Suite: "<ID> : <Title>" (ID: <SUITE_ID>)
 ✓ Test Cases uploaded: <count>
+✓ Work item linked via Tested By
 ```
 
 ---
@@ -630,20 +571,6 @@ Once all test cases have been uploaded, confirm completion:
 | Bug            | `fix/`     | `fix/99-null-pointer-on-login`   |
 | User Story     | `feature/` | `feature/42-user-login-mfa`      |
 | Task           | `feature/` | `feature/57-refactor-auth-layer` |
-
-## Commit message reference
-
-```
-feat(auth): add MFA support for user login
-
-Work item: YOUR_ORG/YOUR_PROJECT#42
-Title: User Login — MFA Support
-
-Changes:
-- Added TOTP verification step in AuthService
-- Updated LoginController to handle MFA challenge response
-- Added unit tests covering successful and failed TOTP scenarios
-```
 
 ## Azure DevOps API quick reference
 
