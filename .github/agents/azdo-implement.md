@@ -47,12 +47,22 @@ Implement work item 42
 
 ---
 
-## Ground rule — always use the ask tool for user input
+## Ground rules
 
-> **At every point where you need information or a decision from the user, you
-> MUST use the `ask` tool with a structured `options` list. Never ask questions
-> as plain prose in your response. The `ask` tool renders a selectable or
-> multi-select UI in VS Code; plain text does not.**
+> **Rule 1 — always use the ask tool for user input.**
+> At every point where you need information or a decision from the user, you
+> MUST use the `ask` tool with a structured `options` list. Never present
+> options as a numbered list in plain prose. The `ask` tool renders a
+> selectable UI in VS Code; plain text does not.
+
+> **Rule 2 — never generate Python scripts, shell script files, or any other
+> code files to drive this workflow.**
+> All API interactions must be performed with individual `curl` commands
+> executed directly in the terminal. If multiple items must be processed (e.g.
+> creating several test cases), run one pair of `curl` commands per item,
+> sequentially, one at a time. Do not write a loop into a file, do not create
+> a `.py`, `.sh`, or any other script file, and do not use any language runtime
+> to orchestrate the calls.
 
 ---
 
@@ -393,7 +403,9 @@ Stop here.
 
 ### Step 13 — Offer to upload test cases to Azure DevOps Test Plans
 
-Use the **ask** tool:
+> **This step requires user input. You must call the `ask` tool right now —
+> before producing any other output. Do not list options as plain text or a
+> numbered list. The ask tool renders a selectable UI in VS Code.**
 
 ```
 ask(
@@ -412,7 +424,7 @@ If **"No"**, confirm and stop.
 
 ### Step 14 — Select a Test Plan
 
-Fetch all available test plans:
+Run this `curl` command to list all available test plans:
 
 ```bash
 curl -s \
@@ -422,12 +434,15 @@ curl -s \
   | jq '.value[] | {id, name}'
 ```
 
-Present the returned plans as options using the **ask** tool:
+> **This step requires user input. You must call the `ask` tool right now —
+> before producing any other output. Populate the options list with the actual
+> plan names returned above. Do not list them as plain text or a numbered list.
+> The ask tool renders a selectable UI in VS Code.**
 
 ```
 ask(
   question = "Select the Test Plan to add the test suite to:",
-  options = [ "<plan names from API response>" ]
+  options = [ "<each plan name from the API response above>" ]
 )
 ```
 
@@ -471,19 +486,25 @@ MetIQ_PI_26_2_MetIQ Functional Tests  (id: 6683211)
     └── Story Acceptance  (id: 6685020)
 ```
 
-Then use the **ask** tool to let the user choose the parent suite under which
-the new story suite should be created. Present only the container-level suites
-(suites that hold child suites, such as "Regression" and "Story Acceptance"
-nodes) — not the individual story-level leaf suites:
+Display the reconstructed tree in the chat so the user can see the full
+structure. Then:
+
+> **This step requires user input. You must call the `ask` tool right now —
+> before producing any other output. Populate the options list with the actual
+> container suite names (and their iteration context) from the tree above.
+> Include only container-level suites such as "Regression" and
+> "Story Acceptance" — not individual story-level leaf suites. Do not list
+> options as plain text or a numbered list. The ask tool renders a selectable
+> UI in VS Code.**
 
 ```
 ask(
-  question = "The current Test Plan suite structure is shown above.
-Under which suite should the new test suite for work item <ID> be created?",
+  question = "The Test Plan suite structure is shown above. Under which suite
+should the new test suite for work item <ID> be created?",
   options = [
-    "<container suite name — e.g. 'Story Acceptance (Iteration 26.2.1)'>",
-    "<container suite name — e.g. 'Regression (Iteration 26.2.1)'>",
-    "<...additional container suites from the tree...>"
+    "<container suite name — e.g. 'Story Acceptance (Iteration 26.2.1)' (id: XXXXXX)>",
+    "<container suite name — e.g. 'Regression (Iteration 26.2.1)' (id: XXXXXX)>",
+    "<...one option per container suite found in the tree...>"
   ]
 )
 ```
@@ -521,33 +542,45 @@ Store the returned `id` as `<SUITE_ID>`.
 
 ### Step 17 — Create each test case as a work item and add to the suite
 
-For each generated test case, run:
+> **Do not write a Python script, shell script file, or any other code file to
+> loop over the test cases. Execute the two `curl` commands below once for each
+> test case, one test case at a time, sequentially in the terminal.**
+
+For each generated test case, execute these two `curl` commands in sequence.
+
+**curl 1 — create the Test Case work item** (substitute the actual values for
+this test case; note `custom.app_EAICode` is always `13882`):
 
 ```bash
-# 1. Create the Test Case work item
-TC_RESPONSE=$(curl -s \
+curl -s \
   -X POST \
   -u ":<YOUR_PAT>" \
   -H "Content-Type: application/json-patch+json" \
   "https://dev.azure.com/YOUR_ORG/YOUR_PROJECT/_apis/wit/workitems/\$Test%20Case?api-version=7.1" \
   -d '[
-    { "op": "add", "path": "/fields/System.Title",       "value": "<test case title>" },
-    { "op": "add", "path": "/fields/System.Description", "value": "<preconditions>" },
-    { "op": "add", "path": "/fields/Microsoft.VSTS.TCM.Steps", "value": "<test steps as HTML>" }
-  ]')
+    { "op": "add", "path": "/fields/System.Title",                "value": "<test case title>" },
+    { "op": "add", "path": "/fields/System.Description",          "value": "<preconditions>" },
+    { "op": "add", "path": "/fields/Microsoft.VSTS.TCM.Steps",    "value": "<test steps as HTML>" },
+    { "op": "add", "path": "/fields/custom.app_EAICode",          "value": "13882" }
+  ]' | jq '.id'
+```
 
-TC_ID=$(echo "$TC_RESPONSE" | jq -r '.id')
+Note the numeric `id` returned (shown by `jq '.id'`) — this is `<TC_ID>`.
 
-# 2. Add the Test Case to the suite
+**curl 2 — add the Test Case to the suite** (replace `<TC_ID>` with the id
+from curl 1):
+
+```bash
 curl -s \
   -X POST \
   -u ":<YOUR_PAT>" \
   -H "Content-Type: application/json" \
   "https://dev.azure.com/YOUR_ORG/YOUR_PROJECT/_apis/testplan/Plans/<PLAN_ID>/Suites/<SUITE_ID>/TestCase?api-version=7.1" \
-  -d "[{ \"workItem\": { \"id\": $TC_ID } }]"
+  -d "[{ \"workItem\": { \"id\": <TC_ID> } }]"
 ```
 
-Repeat for every test case.
+Repeat these two `curl` commands for every remaining test case before moving to
+Step 18.
 
 ---
 
