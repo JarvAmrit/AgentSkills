@@ -343,7 +343,9 @@ If **"No"**, confirm and stop.
 
 ---
 
-### Step 15 — Query available Test Plans
+### Step 15 — Select a Test Plan
+
+Fetch all available test plans:
 
 ```bash
 curl -s \
@@ -362,9 +364,76 @@ ask(
 )
 ```
 
+Store the chosen plan's `id` as `<PLAN_ID>`.
+
 ---
 
-### Step 16 — Create a Test Suite inside the selected plan
+### Step 15b — Browse the suite hierarchy and select a parent suite
+
+Fetch every suite inside the selected plan and build a tree so the user can see
+the full folder structure (e.g. Iteration → Regression / Story Acceptance →
+individual story suites):
+
+```bash
+curl -s \
+  -u ":<YOUR_PAT>" \
+  -H "Content-Type: application/json" \
+  "https://dev.azure.com/YOUR_ORG/YOUR_PROJECT/_apis/testplan/Plans/<PLAN_ID>/suites?api-version=7.1" \
+  | jq '
+      [ .value[]
+        | { id,
+            name,
+            parentId: (.parentSuite.id // null),
+            suiteType
+          }
+      ]'
+```
+
+Using the `parentId` links, reconstruct and display the hierarchy as an
+indented tree, for example:
+
+```
+MetIQ_PI_26_2_MetIQ Functional Tests  (id: 6683211)
+└── Iteration 26.2.1  (id: 6684000)
+    ├── Regression  (id: 6684010)
+    └── Story Acceptance  (id: 6684020)
+        ├── 6534351 : Migrate all existing METIQ UI to API calls  (id: 6686507)
+        └── 6677552 : Onboard ID...  (id: 6686510)
+└── Iteration 26.2.2  (id: 6685000)
+    ├── Regression  (id: 6685010)
+    └── Story Acceptance  (id: 6685020)
+```
+
+Then use the **ask** tool to let the user choose the parent suite under which
+the new story suite should be created. Present only the container-level suites
+(suites that hold child suites, such as "Regression" and "Story Acceptance"
+nodes) — not the individual story-level leaf suites:
+
+```
+ask(
+  question = "The current Test Plan suite structure is shown above.
+Under which suite should the new test suite for work item <ID> be created?",
+  options = [
+    "<container suite name — e.g. 'Story Acceptance (Iteration 26.2.1)'>",
+    "<container suite name — e.g. 'Regression (Iteration 26.2.1)'>",
+    "<...additional container suites from the tree...>"
+  ]
+)
+```
+
+Store the chosen suite's `id` as `<PARENT_SUITE_ID>`.
+
+---
+
+### Step 16 — Create a Test Suite under the selected parent
+
+The suite name must follow the AzDO convention used across the plan:
+
+```
+<ID> : <Title>
+```
+
+For example: `6534351 : Migrate all existing METIQ UI to API calls from v2-beta to v2`
 
 ```bash
 curl -s \
@@ -374,7 +443,8 @@ curl -s \
   "https://dev.azure.com/YOUR_ORG/YOUR_PROJECT/_apis/testplan/Plans/<PLAN_ID>/suites?api-version=7.1" \
   -d '{
     "suiteType": "staticTestSuite",
-    "name": "<type>/<ID> — <title>"
+    "name": "<ID> : <Title>",
+    "parentSuite": { "id": <PARENT_SUITE_ID> }
   }'
 ```
 
@@ -454,12 +524,13 @@ Changes:
 
 ## Azure DevOps API quick reference
 
-| Action                   | Method | URL pattern                                                                    |
-|--------------------------|--------|--------------------------------------------------------------------------------|
-| Get work item            | GET    | `/_apis/wit/workitems/<ID>?$expand=all&api-version=7.1`                        |
-| List repositories        | GET    | `/_apis/git/repositories?api-version=7.1`                                      |
-| Create pull request      | POST   | `/_apis/git/repositories/<repoId>/pullrequests?api-version=7.1`                |
-| List test plans          | GET    | `/_apis/testplan/plans?api-version=7.1`                                        |
-| Create test suite        | POST   | `/_apis/testplan/Plans/<planId>/suites?api-version=7.1`                        |
-| Create test case WI      | POST   | `/_apis/wit/workitems/$Test%20Case?api-version=7.1`                            |
-| Add test case to suite   | POST   | `/_apis/testplan/Plans/<planId>/Suites/<suiteId>/TestCase?api-version=7.1`     |
+| Action                      | Method | URL pattern                                                                    |
+|-----------------------------|--------|--------------------------------------------------------------------------------|
+| Get work item               | GET    | `/_apis/wit/workitems/<ID>?$expand=all&api-version=7.1`                        |
+| List repositories           | GET    | `/_apis/git/repositories?api-version=7.1`                                      |
+| Create pull request         | POST   | `/_apis/git/repositories/<repoId>/pullrequests?api-version=7.1`                |
+| List test plans             | GET    | `/_apis/testplan/plans?api-version=7.1`                                        |
+| List suites in plan (tree)  | GET    | `/_apis/testplan/Plans/<planId>/suites?api-version=7.1`                        |
+| Create child test suite     | POST   | `/_apis/testplan/Plans/<planId>/suites?api-version=7.1` (body: `parentSuite`)  |
+| Create test case WI         | POST   | `/_apis/wit/workitems/$Test%20Case?api-version=7.1`                            |
+| Add test case to suite      | POST   | `/_apis/testplan/Plans/<planId>/Suites/<suiteId>/TestCase?api-version=7.1`     |
