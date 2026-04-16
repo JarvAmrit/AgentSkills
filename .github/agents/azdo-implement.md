@@ -6,7 +6,7 @@ description: >
   PR, and optionally uploads functional test cases to the Azure DevOps Test Plan —
   all without creating or running any external script files.
 tools:
-  - ask
+  - vscode/askQuestions
   - create_file
   - edit_file
   - read_file
@@ -26,8 +26,8 @@ tools:
 | `YOUR_PROJECT`           | Your Azure DevOps project name                |
 | `YOUR_PAT`               | Your Azure DevOps Personal Access Token (PAT) |
 
-> **Tip:** Store the PAT as an environment variable (`AZDO_PAT`) so you never
-> have to paste it in chat. Every `curl` command below reads from that variable.
+> **Tip:** Store the PAT as an environment variable (`AZDO_PAT`) and substitute
+> `":$AZDO_PAT"` for `":<YOUR_PAT>"` throughout this file.
 
 ---
 
@@ -47,6 +47,22 @@ Implement work item 42
 
 ---
 
+## Ground rules
+
+> **Rule 1 — always use `#tool:vscode/askQuestions` for every user decision.**
+> Every choice presented to the user must be delivered through
+> `#tool:vscode/askQuestions` with a structured JSON question object. Never
+> present choices as plain prose, numbered lists, or bullet points. The tool
+> renders a selectable UI (radio buttons for `select`, checkboxes for
+> `multiselect`, a text field for `text`) in VS Code; plain text does not.
+
+> **Rule 2 — no Python scripts, shell script files, or any other code files.**
+> All API interactions must be individual `curl` commands run directly in the
+> terminal. If multiple items must be processed, run one set of `curl` commands
+> per item, sequentially, one at a time.
+
+---
+
 ## Workflow
 
 ### Step 1 — Extract the work item ID
@@ -57,8 +73,6 @@ If only a URL was provided, extract the numeric ID at the end of the path.
 ---
 
 ### Step 2 — Fetch work item details from Azure DevOps
-
-Run the following `curl` command (replace `<ID>` with the parsed ID):
 
 ```bash
 curl -s \
@@ -77,10 +91,26 @@ curl -s \
     }'
 ```
 
-> If `$AZDO_PAT` is set in the environment you may substitute `":<YOUR_PAT>"` with
-> `":$AZDO_PAT"` throughout this file.
-
 Store the returned JSON fields for use in subsequent steps.
+
+If any required field (title, description, acceptance criteria / repro steps) is
+empty or unclear, invoke `#tool:vscode/askQuestions` right now — before any
+other output:
+
+```json
+{
+  "questions": [
+    {
+      "type": "select",
+      "title": "Work item <ID> is missing some details needed to proceed. How should I continue?",
+      "options": [
+        "Proceed anyway — infer intent from the available fields",
+        "I will paste the missing details in my next message"
+      ]
+    }
+  ]
+}
+```
 
 ---
 
@@ -92,7 +122,7 @@ Store the returned JSON fields for use in subsequent steps.
 | User Story     | `feature/`    |
 | Task           | `feature/`    |
 
-Derive the branch name using the pattern:
+Derive the branch name:
 
 ```
 <prefix><ID>-<kebab-case-title>
@@ -104,93 +134,110 @@ Example: `feature/42-user-login-validation`
 
 ### Step 4 — Analyse the work item
 
-Read the fetched fields and extract:
-
 - **For Bugs:** Repro steps, expected vs actual behaviour, affected area.
-- **For User Stories:** Acceptance criteria, functional requirements, affected modules.
+- **For User Stories:** Acceptance criteria, functional requirements, affected
+  modules.
 
-Summarise your understanding of what needs to be implemented or fixed before
-touching any code.
+Summarise your understanding before touching any code.
 
 ---
 
 ### Step 5 — Search the codebase for relevant files
 
 Use `grep_search` and `semantic_search` to locate files related to the work
-item. Consider:
+item. List the top candidate files with a one-line rationale for each.
 
-- Class or function names mentioned in the description.
-- File paths or module names referenced in repro steps / acceptance criteria.
-- Related test files.
+If the search returns no useful results, invoke `#tool:vscode/askQuestions`
+right now — before any other output:
 
-List the top candidate files with a one-line rationale for each.
-
----
-
-### Step 6 — Clarify before implementing
-
-Use the **ask** tool to present the following options to the user before writing
-any code:
-
-```
-ask(
-  question = "I have analysed work item <ID>: \"<title>\".
-Here is my implementation plan:
-
-<bulleted summary of changes you intend to make>
-
-How would you like to proceed?",
-  options = [
-    "Proceed with the plan as described",
-    "Modify the plan (I will explain in the next message)",
-    "Cancel — do not implement"
+```json
+{
+  "questions": [
+    {
+      "type": "select",
+      "title": "I could not locate files clearly related to work item <ID>. How should I proceed?",
+      "options": [
+        "I will tell you the relevant file paths in my next message",
+        "Search for a different keyword — I will specify it in my next message",
+        "Cancel — do not implement"
+      ]
+    }
   ]
-)
+}
 ```
-
-- If the user selects **"Modify the plan"**, read their follow-up message and
-  revise your plan, then present it again with the same three options.
-- If the user selects **"Cancel"**, stop and confirm cancellation.
-- If the user selects **"Proceed"**, continue to Step 7.
 
 ---
 
-### Step 7 — Create the feature / fix branch
+### Step 6 — Create the feature / fix branch
 
 ```bash
 git checkout -b <branch-name>
 ```
 
-Where `<branch-name>` follows the convention derived in Step 3.
-
 ---
 
-### Step 8 — Implement the changes
+### Step 7 — Implement the changes
 
 Apply all required code changes using `create_file` and `edit_file`.
 
 Guidelines:
-- Follow the existing code style, naming conventions, and folder structure of
-  the repository.
-- Do not create helper scripts or Python files to drive the implementation.
+- Follow the existing code style, naming conventions, and folder structure.
 - Keep changes focused: only modify what is necessary to satisfy the work item.
 - Add inline comments only where the logic is non-obvious.
 
+If you reach a decision point where two valid implementation approaches exist,
+invoke `#tool:vscode/askQuestions` right now — before any other output:
+
+```json
+{
+  "questions": [
+    {
+      "type": "select",
+      "title": "I need a decision before implementing <area>. Which approach should I use?",
+      "options": [
+        "<Option A — one-line description>",
+        "<Option B — one-line description>"
+      ]
+    }
+  ]
+}
+```
+
 ---
 
-### Step 9 — Generate unit tests
+### Step 8 — Generate unit tests
 
-For every file changed in Step 8, create or update its corresponding test file.
+For every file changed in Step 7, create or update its corresponding test file.
 
-Test requirements:
 - Cover the happy path and at least one negative / edge-case scenario.
-- Use whatever test framework is already present in the repository (detect from
-  existing test files or `package.json` / `*.csproj` / `requirements.txt` etc.).
+- Use the test framework already present in the repository.
 - Do **not** introduce a new test framework dependency unless there is none.
 
+If no test framework is detected, invoke `#tool:vscode/askQuestions` right now
+— before any other output:
+
+```json
+{
+  "questions": [
+    {
+      "type": "select",
+      "title": "I could not detect a test framework in this repository. Which should I use?",
+      "options": [
+        "Jest",
+        "Vitest",
+        "pytest",
+        "xUnit (.NET)",
+        "NUnit (.NET)",
+        "Other — I will specify in my next message"
+      ]
+    }
+  ]
+}
+```
+
 ---
 
-### Step 10 — Run the tests
+### Step 9 — Run the tests
 
 ```bash
 # Detect and run the project's test command, e.g.:
@@ -198,11 +245,30 @@ Test requirements:
 <detected-test-command>
 ```
 
-If any test fails, fix the code (not the test) and re-run until all tests pass.
+Fix code (not tests) until all tests pass.
+
+If a failure cannot be resolved automatically, invoke `#tool:vscode/askQuestions`
+right now — before any other output:
+
+```json
+{
+  "questions": [
+    {
+      "type": "select",
+      "title": "Test '<test-name>' is failing and I cannot resolve it automatically. How should I proceed?",
+      "options": [
+        "Show me the failure — I will guide you",
+        "Skip this test for now and continue",
+        "Cancel — do not commit"
+      ]
+    }
+  ]
+}
+```
 
 ---
 
-### Step 11 — Commit and push
+### Step 10 — Commit and push
 
 ```bash
 git add -A
@@ -220,11 +286,24 @@ EOF
 git push -u origin <branch-name>
 ```
 
-Where `<type>` is `feat` for User Stories / Tasks and `fix` for Bugs.
-
 ---
 
-### Step 12 — Open a draft pull request
+### Step 11 — Open a draft pull request
+
+First, fetch the repository list to obtain both `<REPO_ID>` and the repo's
+`defaultBranch` in a single call:
+
+```bash
+curl -s -u ":<YOUR_PAT>" \
+  "https://dev.azure.com/YOUR_ORG/YOUR_PROJECT/_apis/git/repositories?api-version=7.1" \
+  | jq '.value[] | {id, name, defaultBranch}'
+```
+
+Match the repo by name, store the `id` as `<REPO_ID>` and the `defaultBranch`
+as `<DEFAULT_BRANCH>` (e.g. `refs/heads/develop`).
+
+> **Never assume the default branch is `main`.** Always use the `defaultBranch`
+> value returned by the API.
 
 ```bash
 curl -s \
@@ -236,55 +315,45 @@ curl -s \
     "title": "<type>: <title> [#<ID>]",
     "description": "## Summary\n\n- Implements work item [#<ID>](https://dev.azure.com/YOUR_ORG/YOUR_PROJECT/_workitems/edit/<ID>)\n\n## Changes\n\n<bulleted change list>\n\n## Test plan\n\n- Unit tests added / updated (see changed test files)\n- All existing tests passing",
     "sourceRefName": "refs/heads/<branch-name>",
-    "targetRefName": "refs/heads/main",
+    "targetRefName": "<DEFAULT_BRANCH>",
     "isDraft": true,
     "workItemRefs": [{ "id": "<ID>" }]
   }'
 ```
 
-> To find `<REPO_ID>` run:
-> ```bash
-> curl -s -u ":<YOUR_PAT>" \
->   "https://dev.azure.com/YOUR_ORG/YOUR_PROJECT/_apis/git/repositories?api-version=7.1" \
->   | jq '.value[] | {id, name}'
-> ```
+> **IMPORTANT — do NOT stop after this step.**
+> Proceed immediately to Step 12. Do not produce a summary or wait for input.
 
 ---
 
-### Step 13 — Offer functional test cases
+### Step 12 — Generate functional / acceptance test cases (REQUIRED)
 
-Use the **ask** tool to present options:
+> **You must invoke `#tool:vscode/askQuestions` right now — before producing
+> any other output. Do not skip this step.**
 
-```
-ask(
-  question = "The draft PR is open. Would you like to generate functional /
-acceptance test cases for this work item?",
-  options = [
-    "Yes — generate and show them here",
-    "Yes — generate and download as CSV",
-    "No — skip this step"
+```json
+{
+  "questions": [
+    {
+      "type": "select",
+      "title": "The draft PR is open. Would you like to generate functional / acceptance test cases for this work item?",
+      "options": [
+        "Yes — generate and show them here",
+        "Yes — generate and download as CSV",
+        "No — skip this step"
+      ]
+    }
   ]
-)
+}
 ```
 
-#### Option A: "Yes — generate and show them here"
+#### Option A — "Yes — generate and show them here"
 
-Generate a Gherkin-style test case table covering:
-- Each acceptance criterion (User Story) or each repro / fix scenario (Bug).
-- At least one positive and one negative scenario per criterion.
+Generate a Gherkin-style test case table covering every acceptance criterion
+(User Story) or repro / fix scenario (Bug). At least one positive and one
+negative scenario per criterion. Present in Markdown, then proceed to Step 13.
 
-Present the table in Markdown.  
-Then proceed to **Step 14** (offer to upload).
-
-#### Option B: "Yes — generate and download as CSV"
-
-Generate the same test cases and format them as CSV with this header row:
-
-```
-Test Case ID,Title,Preconditions,Test Steps,Expected Result,Test Type
-```
-
-Save the file:
+#### Option B — "Yes — generate and download as CSV"
 
 ```bash
 cat > functional-test-cases-<ID>.csv <<'CSVEOF'
@@ -294,12 +363,9 @@ TC-001,"<title>","<preconditions>","<steps>","<expected>","Functional"
 CSVEOF
 ```
 
-Inform the user the file has been saved and can be reviewed before uploading.  
-Then proceed to **Step 14** (offer to upload).
+Inform the user the file is saved, then proceed to Step 13.
 
-#### Option C: "No — skip this step"
-
-Confirm the workflow is complete. Provide a summary:
+#### Option C — "No — skip this step"
 
 ```
 ✓ Work item <ID> — "<title>"
@@ -313,26 +379,30 @@ Stop here.
 
 ---
 
-### Step 14 — Offer to upload test cases to Azure DevOps Test Plans
+### Step 13 — Offer to upload test cases to Azure DevOps Test Plans
 
-Use the **ask** tool:
+> **Invoke `#tool:vscode/askQuestions` right now — before any other output.**
 
-```
-ask(
-  question = "Would you like to upload these functional test cases to an Azure
-DevOps Test Plan?",
-  options = [
-    "Yes — let me choose a Test Plan",
-    "No — I will upload manually"
+```json
+{
+  "questions": [
+    {
+      "type": "select",
+      "title": "Would you like to upload these functional test cases to an Azure DevOps Test Plan?",
+      "options": [
+        "Yes — let me choose a Test Plan",
+        "No — I will upload manually"
+      ]
+    }
   ]
-)
+}
 ```
 
 If **"No"**, confirm and stop.
 
 ---
 
-### Step 15 — Query available Test Plans
+### Step 14 — Select a Test Plan
 
 ```bash
 curl -s \
@@ -342,18 +412,66 @@ curl -s \
   | jq '.value[] | {id, name}'
 ```
 
-Present the returned plans as options using the **ask** tool:
+> **Invoke `#tool:vscode/askQuestions` right now — before any other output.**
+> Populate `options` with the actual plan names returned above.
 
+```json
+{
+  "questions": [
+    {
+      "type": "select",
+      "title": "Select the Test Plan to add the test suite to:",
+      "options": [ "<each plan name from the API response>" ]
+    }
+  ]
+}
 ```
-ask(
-  question = "Select the Test Plan to add the test suite to:",
-  options = [ "<plan names from API response>" ]
-)
-```
+
+Store the chosen plan's `id` as `<PLAN_ID>`.
 
 ---
 
-### Step 16 — Create a Test Suite inside the selected plan
+### Step 15 — Browse the suite hierarchy and select a parent suite
+
+```bash
+curl -s \
+  -u ":<YOUR_PAT>" \
+  -H "Content-Type: application/json" \
+  "https://dev.azure.com/YOUR_ORG/YOUR_PROJECT/_apis/testplan/Plans/<PLAN_ID>/suites?api-version=7.1" \
+  | jq '[ .value[] | { id, name, parentId: (.parentSuite.id // null), suiteType } ]'
+```
+
+Using `parentId` links, reconstruct and display the hierarchy as an indented
+tree in the chat. Then:
+
+> **Invoke `#tool:vscode/askQuestions` right now — before any other output.**
+> Populate `options` with only the container-level suite names (e.g.
+> "Story Acceptance", "Regression") — not individual story-level leaf suites.
+
+```json
+{
+  "questions": [
+    {
+      "type": "select",
+      "title": "The Test Plan suite structure is shown above. Under which suite should the new test suite for work item <ID> be created?",
+      "options": [
+        "<container suite — e.g. 'Story Acceptance (Iteration 26.2.1)' (id: XXXXXX)>",
+        "<container suite — e.g. 'Regression (Iteration 26.2.1)' (id: XXXXXX)>",
+        "<...one option per container suite found in the tree...>"
+      ]
+    }
+  ]
+}
+```
+
+Store the chosen suite's `id` as `<PARENT_SUITE_ID>`.
+
+---
+
+### Step 16 — Create a Test Suite under the selected parent
+
+Suite name convention: `<ID> : <Title>`
+(e.g. `6534351 : Migrate all existing METIQ UI to API calls from v2-beta to v2`)
 
 ```bash
 curl -s \
@@ -363,7 +481,8 @@ curl -s \
   "https://dev.azure.com/YOUR_ORG/YOUR_PROJECT/_apis/testplan/Plans/<PLAN_ID>/suites?api-version=7.1" \
   -d '{
     "suiteType": "staticTestSuite",
-    "name": "<type>/<ID> — <title>"
+    "name": "<ID> : <Title>",
+    "parentSuite": { "id": <PARENT_SUITE_ID> }
   }'
 ```
 
@@ -371,41 +490,66 @@ Store the returned `id` as `<SUITE_ID>`.
 
 ---
 
-### Step 17 — Create each test case as a work item and add to the suite
+### Step 17 — Create each test case and link to the work item
 
-For each generated test case, run:
+> **Do not write a Python script, shell script file, or any other code file.**
+> Run the three `curl` commands below once per test case, sequentially.
+
+**curl 1 — create the Test Case work item:**
 
 ```bash
-# 1. Create the Test Case work item
-TC_RESPONSE=$(curl -s \
+curl -s \
   -X POST \
   -u ":<YOUR_PAT>" \
   -H "Content-Type: application/json-patch+json" \
   "https://dev.azure.com/YOUR_ORG/YOUR_PROJECT/_apis/wit/workitems/\$Test%20Case?api-version=7.1" \
   -d '[
-    { "op": "add", "path": "/fields/System.Title",       "value": "<test case title>" },
-    { "op": "add", "path": "/fields/System.Description", "value": "<preconditions>" },
-    { "op": "add", "path": "/fields/Microsoft.VSTS.TCM.Steps", "value": "<test steps as HTML>" }
-  ]')
+    { "op": "add", "path": "/fields/System.Title",                 "value": "<test case title>" },
+    { "op": "add", "path": "/fields/System.Description",           "value": "<preconditions>" },
+    { "op": "add", "path": "/fields/Microsoft.VSTS.TCM.Steps",     "value": "<test steps as HTML>" },
+    { "op": "add", "path": "/fields/custom.app_EAICode",           "value": "13882" }
+  ]' | jq '.id'
+```
 
-TC_ID=$(echo "$TC_RESPONSE" | jq -r '.id')
+Note the returned `id` as `<TC_ID>`.
 
-# 2. Add the Test Case to the suite
+**curl 2 — add the Test Case to the suite:**
+
+```bash
 curl -s \
   -X POST \
   -u ":<YOUR_PAT>" \
   -H "Content-Type: application/json" \
   "https://dev.azure.com/YOUR_ORG/YOUR_PROJECT/_apis/testplan/Plans/<PLAN_ID>/Suites/<SUITE_ID>/TestCase?api-version=7.1" \
-  -d "[{ \"workItem\": { \"id\": $TC_ID } }]"
+  -d "[{ \"workItem\": { \"id\": <TC_ID> } }]"
 ```
 
-Repeat for every test case.
+**curl 3 — link the Test Case back to the original work item (Tested By):**
+
+```bash
+curl -s \
+  -X PATCH \
+  -u ":<YOUR_PAT>" \
+  -H "Content-Type: application/json-patch+json" \
+  "https://dev.azure.com/YOUR_ORG/YOUR_PROJECT/_apis/wit/workitems/<ID>?api-version=7.1" \
+  -d '[
+    {
+      "op": "add",
+      "path": "/relations/-",
+      "value": {
+        "rel": "Microsoft.VSTS.Common.TestedBy-Forward",
+        "url": "https://dev.azure.com/YOUR_ORG/YOUR_PROJECT/_apis/wit/workitems/<TC_ID>",
+        "attributes": { "comment": "Functional test case" }
+      }
+    }
+  ]'
+```
+
+Repeat all three `curl` commands for every remaining test case.
 
 ---
 
 ### Step 18 — Final summary
-
-Once all test cases have been uploaded, confirm completion:
 
 ```
 ✓ Work item <ID> — "<title>"
@@ -413,8 +557,9 @@ Once all test cases have been uploaded, confirm completion:
 ✓ Unit tests: added / updated
 ✓ Draft PR: opened
 ✓ Test Plan: <plan name>
-✓ Test Suite: "<suite name>" (ID: <SUITE_ID>)
+✓ Test Suite: "<ID> : <Title>" (ID: <SUITE_ID>)
 ✓ Test Cases uploaded: <count>
+✓ Work item linked via Tested By
 ```
 
 ---
@@ -427,28 +572,16 @@ Once all test cases have been uploaded, confirm completion:
 | User Story     | `feature/` | `feature/42-user-login-mfa`      |
 | Task           | `feature/` | `feature/57-refactor-auth-layer` |
 
-## Commit message reference
-
-```
-feat(auth): add MFA support for user login
-
-Work item: YOUR_ORG/YOUR_PROJECT#42
-Title: User Login — MFA Support
-
-Changes:
-- Added TOTP verification step in AuthService
-- Updated LoginController to handle MFA challenge response
-- Added unit tests covering successful and failed TOTP scenarios
-```
-
 ## Azure DevOps API quick reference
 
-| Action                   | Method | URL pattern                                                                    |
-|--------------------------|--------|--------------------------------------------------------------------------------|
-| Get work item            | GET    | `/_apis/wit/workitems/<ID>?$expand=all&api-version=7.1`                        |
-| List repositories        | GET    | `/_apis/git/repositories?api-version=7.1`                                      |
-| Create pull request      | POST   | `/_apis/git/repositories/<repoId>/pullrequests?api-version=7.1`                |
-| List test plans          | GET    | `/_apis/testplan/plans?api-version=7.1`                                        |
-| Create test suite        | POST   | `/_apis/testplan/Plans/<planId>/suites?api-version=7.1`                        |
-| Create test case WI      | POST   | `/_apis/wit/workitems/$Test%20Case?api-version=7.1`                            |
-| Add test case to suite   | POST   | `/_apis/testplan/Plans/<planId>/Suites/<suiteId>/TestCase?api-version=7.1`     |
+| Action                      | Method | URL pattern                                                                    |
+|-----------------------------|--------|--------------------------------------------------------------------------------|
+| Get work item               | GET    | `/_apis/wit/workitems/<ID>?$expand=all&api-version=7.1`                        |
+| List repositories           | GET    | `/_apis/git/repositories?api-version=7.1`                                      |
+| Create pull request         | POST   | `/_apis/git/repositories/<repoId>/pullrequests?api-version=7.1`                |
+| List test plans             | GET    | `/_apis/testplan/plans?api-version=7.1`                                        |
+| List suites in plan (tree)  | GET    | `/_apis/testplan/Plans/<planId>/suites?api-version=7.1`                        |
+| Create child test suite     | POST   | `/_apis/testplan/Plans/<planId>/suites?api-version=7.1` (body: `parentSuite`)  |
+| Create test case WI         | POST   | `/_apis/wit/workitems/$Test%20Case?api-version=7.1`                            |
+| Add test case to suite      | POST   | `/_apis/testplan/Plans/<planId>/Suites/<suiteId>/TestCase?api-version=7.1`     |
+| Link test case to work item | PATCH  | `/_apis/wit/workitems/<id>?api-version=7.1` (rel: `TestedBy-Forward`)          |
