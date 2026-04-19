@@ -61,6 +61,33 @@ Implement work item 42
 > terminal. If multiple items must be processed, run one set of `curl` commands
 > per item, sequentially, one at a time.
 
+> **Rule 3 — never stage or commit Markdown files.**
+> When running `git add`, always exclude `.md` files by using
+> `git add -- ':!*.md'` instead of `git add -A`. Files in `.github/agents/` are
+> maintained exclusively by the repository owner and must never be committed by
+> this agent.
+
+---
+
+## Pre-gathered implementation preferences
+
+When this agent is invoked from `azdo-create-workitem.md` after a work item is
+created or edited, the caller supplies pre-gathered answers to avoid re-prompting
+the user. At any step that would invoke `#tool:vscode/askQuestions`, **first**
+check whether a pre-gathered answer covers that decision. If it does, use it
+silently and proceed without showing the question UI.
+
+| Variable                      | Possible values                                          |
+|-------------------------------|----------------------------------------------------------|
+| `<UNIT_TEST_PREF>`            | `auto-detect` \| `Jest` \| `Vitest` \| `pytest` \| `xUnit (.NET)` \| `NUnit (.NET)` \| `skip` |
+| `<FUNCTIONAL_TEST_PREF>`      | `show-inline` \| `csv` \| `skip`                         |
+| `<TEST_PLAN_UPLOAD>`          | `yes` \| `no`                                            |
+| `<TEST_PLAN_ID>` (optional)   | Numeric ID of the pre-selected Test Plan                 |
+| `<PARENT_SUITE_ID>` (optional)| Numeric ID of the pre-selected parent suite              |
+
+If no pre-gathered answers are provided, follow each step's interactive prompts
+as normal.
+
 ---
 
 ## Workflow
@@ -207,14 +234,19 @@ invoke `#tool:vscode/askQuestions` right now — before any other output:
 
 ### Step 8 — Generate unit tests
 
+If `<UNIT_TEST_PREF>` is `skip`, skip this step entirely and proceed to Step 9.
+
 For every file changed in Step 7, create or update its corresponding test file.
 
 - Cover the happy path and at least one negative / edge-case scenario.
 - Use the test framework already present in the repository.
+- If `<UNIT_TEST_PREF>` specifies a framework (e.g. `Jest`), use that framework
+  without asking — skip the question below.
 - Do **not** introduce a new test framework dependency unless there is none.
 
-If no test framework is detected, invoke `#tool:vscode/askQuestions` right now
-— before any other output:
+If no test framework is detected **and** `<UNIT_TEST_PREF>` is not set or is
+`auto-detect`, invoke `#tool:vscode/askQuestions` right now — before any other
+output:
 
 ```json
 {
@@ -271,7 +303,7 @@ right now — before any other output:
 ### Step 10 — Commit and push
 
 ```bash
-git add -A
+git add -- ':!*.md'
 git commit -m "$(cat <<'EOF'
 <type>(<scope>): <short summary>
 
@@ -328,6 +360,11 @@ curl -s \
 
 ### Step 12 — Generate functional / acceptance test cases (REQUIRED)
 
+If `<FUNCTIONAL_TEST_PREF>` is set, use it directly (map `show-inline` →
+Option A, `csv` → Option B, `skip` → Option C) without invoking the question UI.
+
+If `<FUNCTIONAL_TEST_PREF>` is **not** set:
+
 > **You must invoke `#tool:vscode/askQuestions` right now — before producing
 > any other output. Do not skip this step.**
 
@@ -381,6 +418,13 @@ Stop here.
 
 ### Step 13 — Offer to upload test cases to Azure DevOps Test Plans
 
+If `<TEST_PLAN_UPLOAD>` is `no`, confirm and stop.
+
+If `<TEST_PLAN_UPLOAD>` is `yes` and `<TEST_PLAN_ID>` is set, use those values
+directly and proceed to Step 14 without asking.
+
+If `<TEST_PLAN_UPLOAD>` is not set:
+
 > **Invoke `#tool:vscode/askQuestions` right now — before any other output.**
 
 ```json
@@ -403,6 +447,9 @@ If **"No"**, confirm and stop.
 ---
 
 ### Step 14 — Select a Test Plan
+
+If `<TEST_PLAN_ID>` is already set from pre-gathered answers, store it and skip
+the API call and question below — proceed directly to Step 15.
 
 ```bash
 curl -s \
@@ -432,6 +479,9 @@ Store the chosen plan's `id` as `<PLAN_ID>`.
 ---
 
 ### Step 15 — Browse the suite hierarchy and select a parent suite
+
+If `<PARENT_SUITE_ID>` is already set from pre-gathered answers, store it and
+skip the API call and question below — proceed directly to Step 16.
 
 ```bash
 curl -s \
