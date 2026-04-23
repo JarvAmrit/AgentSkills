@@ -1,0 +1,7 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/DevInsights.API/DevInsights.API.csproj" />
+    <Project Path="src/DevInsights.Core/DevInsights.Core.csproj" />
+    <Project Path="src/DevInsights.Infrastructure/DevInsights.Infrastructure.csproj" />
+  </Folder>
+</Solution>

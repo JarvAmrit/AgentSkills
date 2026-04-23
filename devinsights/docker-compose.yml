@@ -1,0 +1,17 @@
+version: '3.8'
+services:
+  devinsights:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - AzureDevOps__PersonalAccessToken=${AZDO_PAT}
+      - AzureAd__TenantId=${AZURE_TENANT_ID}
+      - AzureAd__ClientId=${AZURE_CLIENT_ID}
+      - SemanticKernel__OpenAIApiKey=${OPENAI_API_KEY}
+      - ConnectionStrings__DefaultConnection=Data Source=/app/data/devinsights.db
+    volumes:
+      - devinsights-data:/app/data
+volumes:
+  devinsights-data:
