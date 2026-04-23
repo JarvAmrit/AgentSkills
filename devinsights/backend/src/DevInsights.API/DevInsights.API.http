@@ -1,0 +1,6 @@
+@DevInsights.API_HostAddress = http://localhost:5074
+
+GET {{DevInsights.API_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
