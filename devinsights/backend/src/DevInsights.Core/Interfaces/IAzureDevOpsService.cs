@@ -2,7 +2,7 @@ namespace DevInsights.Core.Interfaces;
 
 public interface IAzureDevOpsService
 {
-    Task<IEnumerable<CommitInfo>> GetCommitsAsync(string organization, string project, string repoName, DateTime from, DateTime to, CancellationToken cancellationToken = default);
+    Task<IEnumerable<CommitInfo>> GetCommitsAsync(string organization, string project, string repoName, string branch, DateTime from, DateTime to, CancellationToken cancellationToken = default);
     Task<string> GetCommitDiffAsync(string organization, string project, string repoName, string commitId, CancellationToken cancellationToken = default);
 }
 

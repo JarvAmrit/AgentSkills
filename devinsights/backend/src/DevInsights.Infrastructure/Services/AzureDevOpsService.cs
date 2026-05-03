@@ -24,7 +24,7 @@ public class AzureDevOpsService : IAzureDevOpsService
         return new VssConnection(orgUrl, credentials);
     }
 
-    public async Task<IEnumerable<CommitInfo>> GetCommitsAsync(string organization, string project, string repoName, DateTime from, DateTime to, CancellationToken cancellationToken = default)
+    public async Task<IEnumerable<CommitInfo>> GetCommitsAsync(string organization, string project, string repoName, string branch, DateTime from, DateTime to, CancellationToken cancellationToken = default)
     {
         try
         {
@@ -35,7 +35,7 @@ public class AzureDevOpsService : IAzureDevOpsService
             {
                 FromDate = from.ToString("o"),
                 ToDate = to.ToString("o"),
-                ItemVersion = new GitVersionDescriptor { VersionType = GitVersionType.Branch, Version = "main" }
+                ItemVersion = new GitVersionDescriptor { VersionType = GitVersionType.Branch, Version = branch }
             };
 
             var commits = await gitClient.GetCommitsAsync(project, repoName, searchCriteria, cancellationToken: cancellationToken);
