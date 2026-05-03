@@ -16,7 +16,7 @@ Developer Productivity Analytics Dashboard powered by Azure DevOps + AI.
 |-------|-----------|
 | Frontend | React 18, TypeScript, Vite, Recharts, MSAL |
 | Backend | ASP.NET Core 8, C# |
-| AI | Microsoft Semantic Kernel, OpenAI GPT-4o-mini |
+| AI | Microsoft Agent Framework, OpenAI GPT-4o-mini |
 | Database | SQLite via EF Core |
 | AzDo | Microsoft.TeamFoundationServer.Client |
 | Auth | Microsoft Identity Web (JWT Bearer + PKCE) |

@@ -7,8 +7,9 @@ using DevInsights.Infrastructure.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Identity.Web;
-using Microsoft.SemanticKernel;
 using Microsoft.OpenApi.Models;
+using OpenAI;
+using OpenAI.Chat;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -31,16 +32,11 @@ builder.Services.AddCors(options =>
               .AllowCredentials());
 });
 
-// Semantic Kernel
-var skApiKey = builder.Configuration["SemanticKernel:OpenAIApiKey"] ?? string.Empty;
-var skModelId = builder.Configuration["SemanticKernel:ModelId"] ?? "gpt-4o-mini";
-var kernelBuilder = Kernel.CreateBuilder();
-if (!string.IsNullOrEmpty(skApiKey) && !skApiKey.StartsWith("YOUR_"))
-{
-    kernelBuilder.AddOpenAIChatCompletion(skModelId, skApiKey);
-}
-var kernel = kernelBuilder.Build();
-builder.Services.AddSingleton(kernel);
+// Microsoft Agent Framework
+var openAiApiKey = builder.Configuration["OpenAI:ApiKey"] ?? string.Empty;
+var openAiModelId = builder.Configuration["OpenAI:ModelId"] ?? "gpt-4o-mini";
+var chatClient = new OpenAIClient(openAiApiKey).GetChatClient(openAiModelId);
+builder.Services.AddSingleton(chatClient);
 builder.Services.AddTransient<TechnologyClassifierAgent>();
 builder.Services.AddTransient<AIWorkClassifierAgent>();
 builder.Services.AddTransient<CommitSummaryAgent>();

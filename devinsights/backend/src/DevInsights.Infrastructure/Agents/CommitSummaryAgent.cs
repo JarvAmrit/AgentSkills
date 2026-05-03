@@ -1,17 +1,19 @@
+using Microsoft.Agents.AI;
 using Microsoft.Extensions.Logging;
-using Microsoft.SemanticKernel;
-using Microsoft.SemanticKernel.ChatCompletion;
+using OpenAI.Chat;
 
 namespace DevInsights.Infrastructure.Agents;
 
 public class CommitSummaryAgent
 {
-    private readonly Kernel _kernel;
+    private readonly ChatClientAgent _agent;
     private readonly ILogger<CommitSummaryAgent> _logger;
 
-    public CommitSummaryAgent(Kernel kernel, ILogger<CommitSummaryAgent> logger)
+    public CommitSummaryAgent(ChatClient chatClient, ILogger<CommitSummaryAgent> logger)
     {
-        _kernel = kernel;
+        _agent = chatClient.AsAIAgent(
+            instructions: "You are a commit summarizer. Create a concise 1-2 sentence summary of what the developer did in this commit. Focus on the business/technical impact.",
+            name: "CommitSummarizer");
         _logger = logger;
     }
 
@@ -19,13 +21,9 @@ public class CommitSummaryAgent
     {
         try
         {
-            var chatService = _kernel.GetRequiredService<IChatCompletionService>();
-            var history = new ChatHistory();
-            history.AddSystemMessage("You are a commit summarizer. Create a concise 1-2 sentence summary of what the developer did in this commit. Focus on the business/technical impact.");
-            history.AddUserMessage($"Commit message: {message}\n\nDiff preview:\n{diff?.Substring(0, Math.Min(diff?.Length ?? 0, 2000))}");
-
-            var response = await chatService.GetChatMessageContentAsync(history, cancellationToken: cancellationToken);
-            return response.Content ?? message;
+            var prompt = $"Commit message: {message}\n\nDiff preview:\n{diff?.Substring(0, Math.Min(diff?.Length ?? 0, 2000))}";
+            var response = await _agent.RunAsync(prompt, cancellationToken: cancellationToken);
+            return response.Text ?? message;
         }
         catch (Exception ex)
         {
