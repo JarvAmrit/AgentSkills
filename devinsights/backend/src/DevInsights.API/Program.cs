@@ -7,8 +7,9 @@ using DevInsights.Infrastructure.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Identity.Web;
-using Microsoft.SemanticKernel;
 using Microsoft.OpenApi.Models;
+using OpenAI;
+using OpenAI.Chat;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -31,16 +32,17 @@ builder.Services.AddCors(options =>
               .AllowCredentials());
 });
 
-// Semantic Kernel
-var skApiKey = builder.Configuration["SemanticKernel:OpenAIApiKey"] ?? string.Empty;
-var skModelId = builder.Configuration["SemanticKernel:ModelId"] ?? "gpt-4o-mini";
-var kernelBuilder = Kernel.CreateBuilder();
-if (!string.IsNullOrEmpty(skApiKey) && !skApiKey.StartsWith("YOUR_"))
+// Microsoft Agent Framework
+var openAiApiKey = builder.Configuration["OpenAI:ApiKey"] ?? string.Empty;
+var openAiModelId = builder.Configuration["OpenAI:ModelId"] ?? "gpt-4o-mini";
+if (string.IsNullOrEmpty(openAiApiKey) || openAiApiKey.StartsWith("YOUR_"))
 {
-    kernelBuilder.AddOpenAIChatCompletion(skModelId, skApiKey);
+    builder.Logging.AddConsole();
+    var startupLogger = LoggerFactory.Create(lb => lb.AddConsole()).CreateLogger("Startup");
+    startupLogger.LogWarning("OpenAI:ApiKey is not configured. AI classification agents will fall back to heuristics.");
 }
-var kernel = kernelBuilder.Build();
-builder.Services.AddSingleton(kernel);
+var chatClient = new OpenAIClient(openAiApiKey).GetChatClient(openAiModelId);
+builder.Services.AddSingleton(chatClient);
 builder.Services.AddTransient<TechnologyClassifierAgent>();
 builder.Services.AddTransient<AIWorkClassifierAgent>();
 builder.Services.AddTransient<CommitSummaryAgent>();

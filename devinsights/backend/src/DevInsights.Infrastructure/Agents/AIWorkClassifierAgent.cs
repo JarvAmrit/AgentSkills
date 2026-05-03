@@ -1,6 +1,6 @@
+using Microsoft.Agents.AI;
 using Microsoft.Extensions.Logging;
-using Microsoft.SemanticKernel;
-using Microsoft.SemanticKernel.ChatCompletion;
+using OpenAI.Chat;
 using System.Text.Json;
 
 namespace DevInsights.Infrastructure.Agents;
@@ -14,12 +14,17 @@ public class AIWorkClassifierResult
 
 public class AIWorkClassifierAgent
 {
-    private readonly Kernel _kernel;
+    private readonly ChatClientAgent _agent;
     private readonly ILogger<AIWorkClassifierAgent> _logger;
 
-    public AIWorkClassifierAgent(Kernel kernel, ILogger<AIWorkClassifierAgent> logger)
+    public AIWorkClassifierAgent(ChatClient chatClient, ILogger<AIWorkClassifierAgent> logger)
     {
-        _kernel = kernel;
+        _agent = chatClient.AsAIAgent(
+            instructions: @"You are an AI work detector. Analyze commits to determine if they involve AI/LLM-related work.
+AI-related indicators: Copilot usage patterns, AI library imports (OpenAI, LangChain, SemanticKernel, Hugging Face, etc.), 
+prompt engineering files, model configurations, AI service integrations, embeddings, vector databases, AI-related comments/docs.
+Return JSON: {""isAIRelated"": bool, ""description"": ""brief description or empty string"", ""confidenceScore"": 0.0-1.0}",
+            name: "AIWorkClassifier");
         _logger = logger;
     }
 
@@ -27,17 +32,9 @@ public class AIWorkClassifierAgent
     {
         try
         {
-            var chatService = _kernel.GetRequiredService<IChatCompletionService>();
-            var history = new ChatHistory();
-            history.AddSystemMessage(@"You are an AI work detector. Analyze commits to determine if they involve AI/LLM-related work.
-AI-related indicators: Copilot usage patterns, AI library imports (OpenAI, LangChain, SemanticKernel, Hugging Face, etc.), 
-prompt engineering files, model configurations, AI service integrations, embeddings, vector databases, AI-related comments/docs.
-Return JSON: {""isAIRelated"": bool, ""description"": ""brief description or empty string"", ""confidenceScore"": 0.0-1.0}");
-
-            history.AddUserMessage($"Commit message: {message}\n\nDiff:\n{diff?.Substring(0, Math.Min(diff?.Length ?? 0, 3000))}");
-
-            var response = await chatService.GetChatMessageContentAsync(history, cancellationToken: cancellationToken);
-            var content = response.Content ?? "{}";
+            var prompt = $"Commit message: {message}\n\nDiff:\n{diff?.Substring(0, Math.Min(diff?.Length ?? 0, 3000))}";
+            var response = await _agent.RunAsync(prompt, cancellationToken: cancellationToken);
+            var content = response.Text ?? "{}";
 
             var start = content.IndexOf('{');
             var end = content.LastIndexOf('}');

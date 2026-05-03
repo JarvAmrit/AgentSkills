@@ -1,18 +1,22 @@
+using Microsoft.Agents.AI;
 using Microsoft.Extensions.Logging;
-using Microsoft.SemanticKernel;
-using Microsoft.SemanticKernel.ChatCompletion;
+using OpenAI.Chat;
 using System.Text.Json;
 
 namespace DevInsights.Infrastructure.Agents;
 
 public class TechnologyClassifierAgent
 {
-    private readonly Kernel _kernel;
+    private readonly ChatClientAgent _agent;
     private readonly ILogger<TechnologyClassifierAgent> _logger;
 
-    public TechnologyClassifierAgent(Kernel kernel, ILogger<TechnologyClassifierAgent> logger)
+    public TechnologyClassifierAgent(ChatClient chatClient, ILogger<TechnologyClassifierAgent> logger)
     {
-        _kernel = kernel;
+        _agent = chatClient.AsAIAgent(
+            instructions: @"You are a technology classifier. Analyze the commit diff and message to identify technologies used.
+Return ONLY a JSON array of technology names. Examples: [""C#"", ""React"", ""TypeScript"", ""SQL"", ""Python"", ""Docker"", ""Kubernetes"", ""Azure"", ""AWS""].
+Focus on: file extensions, imports, package references, framework usage, config files.",
+            name: "TechnologyClassifier");
         _logger = logger;
     }
 
@@ -20,16 +24,9 @@ public class TechnologyClassifierAgent
     {
         try
         {
-            var chatService = _kernel.GetRequiredService<IChatCompletionService>();
-            var history = new ChatHistory();
-            history.AddSystemMessage(@"You are a technology classifier. Analyze the commit diff and message to identify technologies used.
-Return ONLY a JSON array of technology names. Examples: [""C#"", ""React"", ""TypeScript"", ""SQL"", ""Python"", ""Docker"", ""Kubernetes"", ""Azure"", ""AWS""].
-Focus on: file extensions, imports, package references, framework usage, config files.");
-
-            history.AddUserMessage($"Commit message: {message}\n\nDiff:\n{diff?.Substring(0, Math.Min(diff?.Length ?? 0, 3000))}");
-
-            var response = await chatService.GetChatMessageContentAsync(history, cancellationToken: cancellationToken);
-            var content = response.Content ?? "[]";
+            var prompt = $"Commit message: {message}\n\nDiff:\n{diff?.Substring(0, Math.Min(diff?.Length ?? 0, 3000))}";
+            var response = await _agent.RunAsync(prompt, cancellationToken: cancellationToken);
+            var content = response.Text ?? "[]";
 
             var start = content.IndexOf('[');
             var end = content.LastIndexOf(']');
