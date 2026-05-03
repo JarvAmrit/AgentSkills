@@ -35,6 +35,12 @@ builder.Services.AddCors(options =>
 // Microsoft Agent Framework
 var openAiApiKey = builder.Configuration["OpenAI:ApiKey"] ?? string.Empty;
 var openAiModelId = builder.Configuration["OpenAI:ModelId"] ?? "gpt-4o-mini";
+if (string.IsNullOrEmpty(openAiApiKey) || openAiApiKey.StartsWith("YOUR_"))
+{
+    builder.Logging.AddConsole();
+    var startupLogger = LoggerFactory.Create(lb => lb.AddConsole()).CreateLogger("Startup");
+    startupLogger.LogWarning("OpenAI:ApiKey is not configured. AI classification agents will fall back to heuristics.");
+}
 var chatClient = new OpenAIClient(openAiApiKey).GetChatClient(openAiModelId);
 builder.Services.AddSingleton(chatClient);
 builder.Services.AddTransient<TechnologyClassifierAgent>();
