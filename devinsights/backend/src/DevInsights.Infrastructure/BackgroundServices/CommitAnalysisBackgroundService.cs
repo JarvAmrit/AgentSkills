@@ -13,6 +13,10 @@ public class RepositoryConfig
     public string Organization { get; set; } = string.Empty;
     public string Project { get; set; } = string.Empty;
     public string RepoName { get; set; } = string.Empty;
+    /// <summary>
+    /// Comma-separated list of branches to analyse. Defaults to "develop".
+    /// </summary>
+    public string Branches { get; set; } = "develop";
 }
 
 public class CommitAnalysisBackgroundService : BackgroundService
@@ -59,6 +63,11 @@ public class CommitAnalysisBackgroundService : BackgroundService
         var lookbackDays = _configuration.GetValue<int>("AnalysisSettings:LookbackDays", 90);
         var maxConcurrent = _configuration.GetValue<int>("AnalysisSettings:MaxConcurrentAnalyses", 5);
         var repoConfigs = _configuration.GetSection("AzureDevOps:Repositories").Get<List<RepositoryConfig>>() ?? new List<RepositoryConfig>();
+        var allowedEmails = _configuration.GetSection("AnalysisSettings:AllowedEmails").Get<List<string>>() ?? new List<string>();
+        var allowedEmailSet = allowedEmails
+            .Select(e => e.Trim())
+            .Where(e => !string.IsNullOrEmpty(e))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         _logger.LogInformation("Starting analysis for {Count} repositories", repoConfigs.Count);
 
@@ -85,7 +94,29 @@ public class CommitAnalysisBackgroundService : BackgroundService
 
             try
             {
-                var commits = (await azDoService.GetCommitsAsync(repoConfig.Organization, repoConfig.Project, repoConfig.RepoName, from, to, cancellationToken)).ToList();
+                // Collect commits from all configured branches, deduplicating by commit ID.
+                var branches = repoConfig.Branches
+                    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .Where(b => !string.IsNullOrEmpty(b))
+                    .ToList();
+
+                if (branches.Count == 0)
+                    branches = new List<string> { "develop" };
+
+                var commitMap = new Dictionary<string, CommitInfo>(StringComparer.Ordinal);
+                foreach (var branch in branches)
+                {
+                    var branchCommits = await azDoService.GetCommitsAsync(
+                        repoConfig.Organization, repoConfig.Project, repoConfig.RepoName,
+                        branch, from, to, cancellationToken);
+                    foreach (var c in branchCommits)
+                        commitMap.TryAdd(c.CommitId, c);
+                }
+
+                // Filter to only the configured email addresses when a list is provided.
+                var commits = commitMap.Values
+                    .Where(c => allowedEmailSet.Count == 0 || allowedEmailSet.Contains(c.AuthorEmail))
+                    .ToList();
                 _logger.LogInformation("Found {Count} commits in {Repo}", commits.Count, repoConfig.RepoName);
 
                 var semaphore = new SemaphoreSlim(maxConcurrent);
